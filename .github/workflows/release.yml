@@ -1,0 +1,203 @@
+name: Build and Release Neon Proxy Binaries
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      NEON_RELEASE_TAG: ${{ steps.neon_tag.outputs.NEON_TAG }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get NEON_RELEASE_TAG from Dockerfile
+        id: neon_tag
+        run: |
+          NEON_TAG=$(grep "ARG NEON_RELEASE_TAG=" ./docker/neon-proxy/Dockerfile | head -1 | cut -d '=' -f 2)
+          echo "NEON_TAG=$NEON_TAG" >> $GITHUB_OUTPUT
+
+  build-linux-amd64:
+    needs:
+      - prepare
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Set platform name
+        id: sanitize
+        run: |
+          echo "PLATFORM_PAIR=linux-amd64" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Clone and build Neon proxy
+        run: |
+          git clone --depth=1 --branch ${{ needs.prepare.outputs.NEON_RELEASE_TAG }} https://github.com/neondatabase/neon.git
+          cd neon
+          cargo build --bin proxy --release --features "testing"
+
+          # Create the binary with platform in filename
+          mkdir -p /tmp/binaries
+          cp ./target/release/proxy /tmp/binaries/neon-proxy-${{ steps.sanitize.outputs.PLATFORM_PAIR }}
+          chmod +x /tmp/binaries/neon-proxy-${{ steps.sanitize.outputs.PLATFORM_PAIR }}
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: neon-proxy-${{ steps.sanitize.outputs.PLATFORM_PAIR }}
+          path: /tmp/binaries/*
+          if-no-files-found: error
+          retention-days: 7
+
+  build-linux-arm64:
+    needs:
+      - prepare
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - name: Set platform name
+        id: sanitize
+        run: |
+          echo "PLATFORM_PAIR=linux-arm64" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Clone and build Neon proxy
+        run: |
+          git clone --depth=1 --branch ${{ needs.prepare.outputs.NEON_RELEASE_TAG }} https://github.com/neondatabase/neon.git
+          cd neon
+          cargo build --bin proxy --release --features "testing"
+
+          # Create the binary with platform in filename
+          mkdir -p /tmp/binaries
+          cp ./target/release/proxy /tmp/binaries/neon-proxy-${{ steps.sanitize.outputs.PLATFORM_PAIR }}
+          chmod +x /tmp/binaries/neon-proxy-${{ steps.sanitize.outputs.PLATFORM_PAIR }}
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: neon-proxy-${{ steps.sanitize.outputs.PLATFORM_PAIR }}
+          path: /tmp/binaries/*
+          if-no-files-found: error
+          retention-days: 7
+
+  build-macos:
+    needs:
+      - prepare
+    runs-on: macos-14
+    steps:
+      - name: Set platform name
+        id: sanitize
+        run: |
+          echo "PLATFORM_PAIR=darwin-arm64" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Clone and build Neon proxy
+        run: |
+          git clone --depth=1 --branch ${{ needs.prepare.outputs.NEON_RELEASE_TAG }} https://github.com/neondatabase/neon.git
+          cd neon
+          cargo build --bin proxy --release --features "testing"
+
+          # Create the binary with platform in filename
+          mkdir -p /tmp/binaries
+          cp ./target/release/proxy /tmp/binaries/neon-proxy-${{ steps.sanitize.outputs.PLATFORM_PAIR }}
+          chmod +x /tmp/binaries/neon-proxy-${{ steps.sanitize.outputs.PLATFORM_PAIR }}
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: neon-proxy-${{ steps.sanitize.outputs.PLATFORM_PAIR }}
+          path: /tmp/binaries/*
+          if-no-files-found: error
+          retention-days: 7
+
+  create-release:
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - build-linux-amd64
+      - build-linux-arm64
+      - build-macos
+    permissions:
+      contents: write
+    steps:
+      - name: Create binaries directory
+        run: mkdir -p ./binaries
+
+      - name: Download Linux AMD64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: neon-proxy-linux-amd64
+          path: ./binaries
+
+      - name: Download Linux ARM64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: neon-proxy-linux-arm64
+          path: ./binaries
+
+      - name: Download macOS ARM64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: neon-proxy-darwin-arm64
+          path: ./binaries
+
+      - name: List downloaded binaries
+        run: |
+          echo "Contents of binaries directory:"
+          ls -la ./binaries/
+
+      - name: Generate release date
+        id: date
+        run: echo "RELEASE_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ needs.prepare.outputs.NEON_RELEASE_TAG }}
+          tag_name: ${{ needs.prepare.outputs.NEON_RELEASE_TAG }}
+          body: |
+            Neon HTTP Proxy binaries built from Neon release tag: ${{ needs.prepare.outputs.NEON_RELEASE_TAG }}
+
+            ## Binaries
+            - Linux AMD64: `neon-proxy-linux-amd64`
+            - Linux ARM64: `neon-proxy-linux-arm64`
+            - macOS ARM64: `neon-proxy-darwin-arm64`
+
+            Built on: ${{ steps.date.outputs.RELEASE_DATE }}
+          files: |
+            ./binaries/*
+          draft: false
+          prerelease: false
