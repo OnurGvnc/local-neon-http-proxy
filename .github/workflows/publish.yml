@@ -3,7 +3,7 @@ name: Create and publish a Docker image
 on:
   workflow_dispatch:
   push:
-    branches: ['main']
+    branches: ["main"]
 
 env:
   REGISTRY: ghcr.io
@@ -21,10 +21,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Lint Dockerfile
-        uses: hadolint/hadolint-action@master
-        with:
-          dockerfile: './docker/neon-proxy/Dockerfile'
       - name: Registry image name
         env:
           REGISTRY: ${{ env.REGISTRY }}
@@ -61,9 +57,6 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

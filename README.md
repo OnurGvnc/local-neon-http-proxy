@@ -40,11 +40,11 @@ services:
       retries: 5
 
   neon-proxy:
-    image: ghcr.io/timowilhelm/local-neon-http-proxy:main
+    image: ghcr.io/onurgvnc/local-neon-http-proxy:main
     environment:
       - PG_CONNECTION_STRING=postgres://postgres:postgres@postgres:5432/main
     ports:
-      - '4444:4444'
+      - '4445:4445'
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,7 +55,7 @@ volumes:
 
 #### Offline setup
 
-> [!NOTE] 
+> [!NOTE]
 > This step is only necessary if you want to use the proxy without an internet connection.
 > [`localtest.me`](https://readme.localtest.me/) normally resolves all subdomains to `127.0.0.1`
 > automatically when you are able to reach the DNS server.
